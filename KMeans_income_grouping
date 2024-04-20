@@ -39,7 +39,6 @@ df_selection = df_selection_spark.toPandas()
 #Check distribution
 df_selection.groupby('year_month').describe()
 
-
 #Create an array from the 'book_amt' column
 income_array = df_selection['book_amt'].values
 
@@ -50,8 +49,6 @@ income_array_norm = (income_array - min_value) / (max_value - min_value)
 
 #Plot histogram to check skewness
 sns.histplot(income_array_norm)
-
-
 
 
 
@@ -71,7 +68,7 @@ def KMeans_predict(income):
     
     #Assign the clusters to a dataframe
     global df_year_month
-    #df_year_month = df_all[df_all['year_month']=='2021-01-01'].copy()
+    #df_year_month = df_selection[df_selection['bookg_date']=='2021-01-01'].copy()
     df_year_month['cluster'] = list(clusters)
     
     #Assign income_group column in the ascending order by median value of the cluster
@@ -84,15 +81,15 @@ def KMeans_predict(income):
     return df_year_month.merge(clusters_mapping_table[['cluster','income_group']], how='left', left_on='cluster', right_on='cluster')
     df_year_month.head()
 
-    #For every year_month in the dataset apply a for loop and assign income_group per year_month
-dates = df_all['year_month'].unique()
+    #For every bookg_date in the dataset apply a for loop and assign income_group per year_month
+dates = df_selection['bookg_date'].unique()
 
-df_income_groups = pd.DataFrame(columns=['income', 'year_month', 'cluster', 'income_group'])
+df_income_groups = pd.DataFrame(columns=['income', 'bookg_date', 'cluster', 'income_group'])
 
-for year_month in dates:
-    #Assign df_year_month from df_all
-    df_year_month = df_all[df_all['year_month']==year_month].copy()
-    #Select the income for the given_year_month as array and reshape
+for bookg_date in dates:
+    #Assign df_year_month from df_selection
+    df_year_month = df_selection[df_selection['bookg_date']==bookg_date].copy()
+    #Select the income for the given bookg_date as array and reshape
     income = df_year_month['income'].to_numpy().reshape(-1,1)
     #Execute KMeans function
     df_year_month = KMeans_predict(income)
@@ -102,7 +99,7 @@ for year_month in dates:
     
 #Summarize results
 df_income_groups['income'] = df_income_groups['income'].astype(float)
-df_income_groups.groupby(['year_month', 'income_group'])['income'].describe().sort_values(['year_month','income_group'])   
+df_income_groups.groupby(['bookg_date', 'income_group'])['income'].describe().sort_values(['bookg_date','income_group'])   
 
 
 #Plot the histrogram distribution and scatterplot distribution curves
