@@ -1,0 +1,206 @@
+# Databricks notebook source
+%run /Houseprice_Model/Scraping/selenium_tools
+
+driver, d = selenium_tools().spawn_driverdisplay(headless=False)
+
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import os
+import re
+import requests
+
+import undetected_chromedriver as uc
+from pyvirtualdisplay import Display
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+import time
+from datetime import date, datetime, timedelta
+from numpy import datetime64, float64
+import pandas as pd
+import random
+
+from pyspark.sql import SparkSession
+
+
+class Funda_Houses():
+
+    def __init__(self):
+        self.towns = []
+        self.construction_type = []
+        self.availability = []
+        self.object_type = []
+
+    def scraping_parameters():
+        #Define towns list
+        towns = list(spark.read.table('housing_price.funda_town_list').toPandas()['town_list'])
+        towns = towns[:50]
+
+        #Construction type
+        construction_type = ['resale','newly_built']
+
+        #Offer_status options
+        availability = ['available', 'negotiations', 'unavailable']
+
+        #House types
+        object_type = ['house', 'appartment']
+
+        return towns, construction_type, availability, object_type
+
+    def house_attributes(town, ct, st, ot):
+
+        ''''
+        Returns dataframe df_main given the parameters:
+
+        town: The city/town
+        ct: Construction type - resale or new building
+        st: Status of availability - available, negotiations or unavailable
+        ot: Object type - Apartment or house
+        '''
+
+        df_main = pd.DataFrame(columns=['town', 'construction_type', 'offer_status', 'house_type', 'page_nr', 'streetname', 'pc6', 'ask_price', 'house_attributes', 'makelaar'])
+        df_main['page_nr'] = pd.to_numeric(df_main['page_nr'])
+
+        url = f"https://www.funda.nl/zoeken/koop?selected_area=%5B%22{town}%22%5D&construction_type=%5B%22{ct}%22%5D&availability=%5B%22{st}%22%5D&object_type=%5B%22{ot}%22%5D"
+
+        #Set the driver for the given url
+        driver.get(url)
+
+        ##Get max page nr to iterate for
+        page_nr_elements = driver.find_elements(By.XPATH, '//a[@tabindex="0"]')
+        page_nr = [element.text for element in page_nr_elements]
+
+        try:
+            max_page_nr = max([int(s) for s in page_nr if s.isdigit()])
+        except ValueError:  # if the input was invalid
+            max_page_nr = 0
+
+        if max_page_nr > 0:
+            pg_nr = int(1)
+            while pg_nr <= max_page_nr:
+
+                print(f"pg {pg_nr} start")
+
+                url = f"https://www.funda.nl/zoeken/koop?selected_area=%5B%22{town}%22%5D&construction_type=%5B%22{ct}%22%5D&availability=%5B%22{st}%22%5D&object_type=%5B%22{ot}%22%5D&search_result={pg_nr}"
+
+                #Set the driver for the given url
+                driver.get(url)
+
+                #Define an empty dataframe
+                #vars()['df_'+ town] = pd.DataFrame()
+
+                df = pd.DataFrame(columns=['town', 'construction_type', 'offer_status', 'house_type', 'page_nr', 'streetname', 'pc6', 'ask_price', 'house_attributes', 'makelaar'])
+                df['page_nr'] = pd.to_numeric(df['page_nr'])
+
+                #Streetname
+                streetname = driver.find_elements(By.XPATH, '//h2[contains(@data-test-id,"street-name-house-number") and contains(@class, "mt-4 font-semibold sm:mt-0")]')
+                streetname_items = [element.text for element in streetname]
+                df['streetname'] = streetname_items
+
+                print(f"streetname ok")
+
+                #PC6
+                pc6_elements = driver.find_elements(By.XPATH, '//div[contains(@data-test-id,"postal-code-city") and contains(@class,"text-dark-1 mb-2")]')
+                pc6_items = [element.text for element in pc6_elements]
+                df['pc6'] = pc6_items
+
+                print(f"pc6_elements ok")
+                
+                #Ask_price
+                ask_price = driver.find_elements(By.XPATH, '//p[@data-test-id="price-sale" and contains(@class, "font-semibold")]')
+                ask_price_items = [element.text for element in ask_price]
+                df['ask_price'] = ask_price_items
+
+                print(f"ask_price ok")
+
+                ##Headline house attributes information
+                house_attributes = driver.find_elements(By.XPATH, '//ul[@class="mt-1 flex h-6 min-w-0 flex-wrap overflow-hidden"]')
+                house_attribute_items = [element.text for element in house_attributes]
+                df['house_attributes'] = house_attribute_items
+
+                print(f"house_attributes ok")
+
+                #Agent
+                makelaars = driver.find_elements(By.XPATH, '//div[@class="mt-4 flex"]')
+                makelaar_items = [element.text for element in makelaars]
+                df['makelaar'] = makelaar_items
+
+                print(f"makelaars ok")
+
+                df['town'] = str(town)
+                df['construction_type'] = str(ct)
+                df['offer_status'] = str(st)
+                df['house_type'] = str(ot)
+                df['page_nr'] = int(pg_nr)
+
+                print(f"pg {pg_nr} end")
+
+                #df_main = df_main.append(df)
+                self.df_main = pd.concat([self.df_main, df])
+                
+                print(f"pg {pg_nr} append succeeded")
+                print(f"{pg_nr} / {max_page_nr} completed")
+
+                pg_nr = pg_nr+1
+        else:
+            pass
+
+        #return df_main
+    
+
+def full_house_information():
+
+    #Delete df_all if exists
+    try:
+        del df_all
+    except NameError: 
+        pass
+
+    #Create df_all
+    self.df_all = pd.DataFrame(columns=['town', 'construction_type', 'offer_status', 'house_type', 'page_nr', 'streetname', 'pc6', 'ask_price', 'house_attributes', 'makelaar'])
+    self.df_all['page_nr'] = pd.to_numeric(self.df_all['page_nr'])
+
+    for town in self.towns:
+        for ct in self.construction_type:
+            for st in self.availability:
+                for ot in self.object_type:
+                    print(town, ct, st, ot)
+                    #Execute the house_attributes function
+                    df_main = Funda_Houses.house_attributes(town, ct, st, ot)
+                    print("house attributes succeeded")
+
+                    #Concetanate house_attributes output for the given parameters to the df_all table
+                    self.df_all = pd.concat([df_all, df_main])
+                    print("concat succeeded")
+
+                    #Progress update
+                    cnt_town_all = len(towns)
+                    cnt_town = towns.index(town)
+                    print(f"{cnt_town}/{cnt_town_all} towns completed")   
+                    print(" ")
+
+                    #Pause for a while to gentle scrape
+                    secs = random.uniform(5, 20)
+                    time.sleep(secs)
+
+    self.df_all['rec_vld_dts'] = datetime.datetime.today()
+    self.df_all['load_dts'] = datetime.datetime.today()
+
+
+def write_data():
+        df_all_spark = spark.createDataFrame(self.df_all)
+
+        #Write in database table
+        (df_all_spark.write
+        .partitionBy("rec_vld_dts", "town")
+        .format("delta")
+        .mode("append")                                 # "append" or "overwrite"
+        .option("overwriteSchema", "true")                 # optional
+        .saveAsTable("housing_price.funda_house_data")    # Managed table (drop table = drop data)
+        )
