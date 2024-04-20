@@ -50,15 +50,11 @@ income_array_norm = (income_array - min_value) / (max_value - min_value)
 #Plot histogram to check skewness
 sns.histplot(income_array_norm)
 
-
-
-
-
 #Create a dataframe and assign df_sample values as income
 df_all = pd.DataFrame({'income': df_sample})
 
 
-
+#Create the K-Means function for clustering income. Cluster count is
 def KMeans_predict(income):
     #Apply KMeans with three clusters
     n_clusters = 3
@@ -79,9 +75,9 @@ def KMeans_predict(income):
 
     #Append the income_group to the respective cluster in the dataset
     return df_year_month.merge(clusters_mapping_table[['cluster','income_group']], how='left', left_on='cluster', right_on='cluster')
-    df_year_month.head()
 
-    #For every bookg_date in the dataset apply a for loop and assign income_group per year_month
+
+#For every bookg_date in the dataset apply a for loop and assign income_group per year_month
 dates = df_selection['bookg_date'].unique()
 
 df_income_groups = pd.DataFrame(columns=['income', 'bookg_date', 'cluster', 'income_group'])
