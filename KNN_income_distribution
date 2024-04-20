@@ -1,0 +1,122 @@
+import time
+Kmeans_start = time.time()
+
+#Import libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+from scipy.stats import poisson
+from scipy.stats import skewnorm
+import seaborn as sns
+
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+#Define the start and end dates
+start_date = datetime(2021, 1, 1)
+end_date = datetime(2022, 12, 1)
+
+#Create an array of all included dates
+months_list = [start_date.strftime('%Y-%m-%d')]
+while start_date < end_date:
+    start_date += relativedelta(months=1)  # Add one month
+    if start_date < end_date:
+        months_list.append(start_date.strftime('%Y-%m-%d'))
+
+#Select data and filter on scoped dates
+df_selection_spark = spark.read.table(transactions_data.tx_np_all)
+  .filter((col('category_name_en').isin(['salary','allowance','pension'])) & (col('bookg_date').isin(months_list))
+  .select(col('bookg_date'), col('bookg_amt'))
+
+#Convert to pandas dataframe
+df_selection = df_selection_spark.toPandas()
+
+#Check distribution
+df_selection.groupby('year_month').describe()
+
+
+#Create an array from the 'book_amt' column
+income_array = df_selection['book_amt'].values
+
+#Normalize income amounts 
+min_value = np.min(income_array)
+max_value = np.max(income_array)
+income_array_norm = (income_array - min_value) / (max_value - min_value)
+
+#Plot histogram to check skewness
+sns.histplot(income_array_norm)
+
+
+
+
+
+
+
+#Create a dataframe and assign df_sample values as income
+df_all = pd.DataFrame({'income': df_sample})
+
+
+
+def KMeans_predict(income):
+    #Apply KMeans with three clusters
+    n_clusters = 3
+    km = KMeans(n_clusters=n_clusters, max_iter=5)
+
+    clusters = km.fit_predict(income)
+    
+    #Assign the clusters to a dataframe
+    global df_year_month
+    #df_year_month = df_all[df_all['year_month']=='2021-01-01'].copy()
+    df_year_month['cluster'] = list(clusters)
+    
+    #Assign income_group column in the ascending order by median value of the cluster
+    clusters_mapping_table = df_year_month.groupby(['cluster']).median().sort_values(by='income').reset_index()
+
+    #clusters_mapping_table['income_group'] = np.arange(clusters_mapping_table.shape[0])
+    clusters_mapping_table['income_group'] = range(1,4)
+
+    #Append the income_group to the respective cluster in the dataset
+    return df_year_month.merge(clusters_mapping_table[['cluster','income_group']], how='left', left_on='cluster', right_on='cluster')
+    df_year_month.head()
+
+    #For every year_month in the dataset apply a for loop and assign income_group per year_month
+dates = df_all['year_month'].unique()
+
+df_income_groups = pd.DataFrame(columns=['income', 'year_month', 'cluster', 'income_group'])
+
+for year_month in dates:
+    #Assign df_year_month from df_all
+    df_year_month = df_all[df_all['year_month']==year_month].copy()
+    #Select the income for the given_year_month as array and reshape
+    income = df_year_month['income'].to_numpy().reshape(-1,1)
+    #Execute KMeans function
+    df_year_month = KMeans_predict(income)
+    #Assign the results to the final dataframe
+    df_income_groups = pd.concat([df_income_groups, df_year_month])
+    
+    
+#Summarize results
+df_income_groups['income'] = df_income_groups['income'].astype(float)
+df_income_groups.groupby(['year_month', 'income_group'])['income'].describe().sort_values(['year_month','income_group'])   
+
+
+#Plot the histrogram distribution and scatterplot distribution curves
+
+fig, axes = plt.subplots(1, 2, figsize=(15,5), sharey=False)
+
+#Elbow
+sns.histplot(ax=axes[0], data=df_year_month, x='income', hue='income_group')
+axes[0].set_title("Histrogram distribution")
+
+#Silhouette
+sns.lineplot(ax=axes[1], data=df_year_month, x='income', y='income', hue='income_group')
+axes[1].set_title("Scatterplot distribution")
+
+Kmeans_end = time.time()
+KMeans_testing_time = Kmeans_end - Kmeans_start
+print(str(KMeans_testing_time) + ' seconds')
